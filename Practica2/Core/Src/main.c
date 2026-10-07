@@ -61,6 +61,16 @@ static void MX_USART2_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+enum Estado{
+	CERRADO,
+	ABRIENDO,
+	ABIERTO,
+	CERRANDO,
+	PARADO_ABRIENDO,
+	PARADO_CERRANDO
+};
+
 bool detectarFlanco(){ //Codigo antirrebotes dado
 	static bool estable=false;
 	static bool ultimo=false;
@@ -78,33 +88,41 @@ bool detectarFlanco(){ //Codigo antirrebotes dado
 	return false;
 }
 
-void controlPanel(int estado, int posicion, bool fotocelula){
-	//Control de la pantalla
+void controlPanel(enum Estado estado, int posicion){
+	//Control de la pantalla. Los sprint son para convertir a string, como las funciones de hae
 	char texto[9];
 	switch(estado){
-		case 0:
+		case CERRADO:
 			tm1638_DisplayTxt(&TM, "cErrAdA");
 			break;
-		case 1:
-			sprintf(texto, "%2d", (RECORRIDO_CM - posicion) / 30);
-			tm1638_DisplayTxt(&TM, texto);
+		case ABRIENDO:
+			sprintf(texto, "%2d", posicion);
+			tm1638_DisplayTxt(&TM,texto);
 			break;
-		case 2:
+		case ABIERTO:
 			tm1638_DisplayTxt(&TM, "AbiErtA");
 			break;
-		case 3:
-			sprintf(texto, "%2d", posicion/30);
-			tm1638_DisplayTxt(&TM, texto);
+		case CERRANDO:
+			sprintf(texto, "%2d", posicion);
+			tm1638_DisplayTxt(&TM,texto);
 			break;
-		case 4:
-		case 5:
+		case PARADO_ABRIENDO:
+		case PARADO_CERRANDO:
 			tm1638_DisplayTxt(&TM, "PArAdA");
 			break;
 	}
-	//Control de los leds. No se puede hacer como en hae con mascaras
-
-
+	//Control de los leds
+	int ledsEncendidos=(posicion*8)/RECORRIDO_CM;
+	for(int i=1; i<=8; i++){
+		if(i<=ledsEncendidos){
+			tm1638_Led(&TM,i,1);
+		}
+		else{
+			tm1638_Led(&TM,i,0);
+		}
+	}
 }
+
 /* USER CODE END 0 */
 
 /**
@@ -151,17 +169,9 @@ int main(void)
   tm1638_TurnOn(&TM, 7);
   tm1638_DisplayClear(&TM);
 
-  /*
-   	ESTADOS
-   	- 0 cerrado
-   	- 1 abriendo
-   	- 2 abierto
-   	- 3 cerrando
-   	- 4 parado_abriendo
-   	- 5 parado_cerrando
-  */
-  int estado=0;
+  enum Estado estado=CERRADO;
   int posicion=0;
+  //static uint32_t tMov=0;
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
@@ -172,67 +182,66 @@ int main(void)
 	  uint8_t teclas=tm1638_ScanButtons(&TM);
 	  bool fotocelula=tm1638_KeyState(&TM, teclas, 1);
 
-	  switch(estado){
-	  	  case 0: //cerrado
-	  		  if(pulsacionBoton==true){
-	  			  estado=1;
-	  		  }
-	  		  break;
-	  	  case 1: //abriendo
-	  		  if(pulsacionBoton==true){
-	  			  estado=4;
-	  		  }
-	  		  if(posicion==RECORRIDO_CM){
-	  			  estado=2;
-	  		  }
-	  		  break;
-	  	  case 2: //abierto
-	  		  if(pulsacionBoton==true){
-	  			  estado=3;
-	  		  }
-	  		  break;
-	  	  case 3: //cerrando
-	  		  if(pulsacionBoton==true){
-	  			  estado=5;
-	  		  }
-	  		  if(posicion==0){
-	  			  estado=0;
-	  		  }
-	  		  break;
-	  	  case 4: //parado_abriendo
-	  		  if(pulsacionBoton){
-	  			  estado=3;
-	  		  }
-	  		  break;
-	  	  case 5: //parado_cerrando
-	  		  if(pulsacionBoton){
-	  			  estado=1;
-	  		  }
-	  		  break;
-	  }
-
-	  bool motorApertura=(estado==1);
-	  bool motorCierre=(estado==3 && !fotocelula);
-
+	  //Temporizacion de tiempos
 	  static uint32_t tMov=0;
 	  bool tick=(HAL_GetTick()-tMov)>=TICK_MOV_MS;
-	  if(tick){
-		  tMov+=TICK_MOV_MS;
-		  if(motorApertura){
-			  posicion+=PASO_CM;
-			  if(posicion>=RECORRIDO_CM){
-				  posicion=RECORRIDO_CM;
-			  }
-		  }
-		  if(motorCierre){
-			  posicion-=PASO_CM;
-			  if(posicion<=0){
-				  posicion=0;
-			  }
-		  }
+	  	  if(tick){
+	  		  tMov+=TICK_MOV_MS;
 	  }
 
-	  controlPanel(estado, posicion, fotocelula);
+	  switch(estado){
+	  	  case CERRADO:
+	  		  if(pulsacionBoton){
+	  			  estado=ABRIENDO;
+	  		  }
+	  		  break;
+	  	  case ABRIENDO:
+	  		  if(pulsacionBoton){
+	  			  estado=PARADO_ABRIENDO;
+	  		  }
+	  		  if(tick){
+	  			  posicion+=PASO_CM;
+	  			  if(posicion>=RECORRIDO_CM){
+	  				  posicion=RECORRIDO_CM;
+	  				  estado=ABIERTO;
+	  			  }
+	  		  }
+	  		  break;
+	  	  case ABIERTO:
+	  		  if(pulsacionBoton){
+	  			  estado=CERRANDO;
+	  		  }
+	  		  break;
+	  	  case CERRANDO:
+	  		  if(pulsacionBoton){
+	  			  estado=PARADO_CERRANDO;
+	  		  }
+	  		  if(fotocelula){
+	  			  estado=PARADO_CERRANDO;
+	  		  }
+	  		  if(tick){
+	  			  posicion-=PASO_CM;
+	  			  if(posicion<=0){
+	  				  posicion=0;
+	  				  estado=CERRADO;
+	  			  }
+	  		  }
+	  		  break;
+	  	  case PARADO_ABRIENDO:
+	  		  if(pulsacionBoton){
+	  			  estado=CERRANDO;
+	  		  }
+	  		  break;
+	  	  case PARADO_CERRANDO:
+	  		  if(!fotocelula){
+	  			  estado=CERRANDO;
+	  		  }
+	  		  if(pulsacionBoton){
+	  			  estado=ABRIENDO;
+	  		  }
+	  		  break;
+	  }
+	  controlPanel(estado, posicion);
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
