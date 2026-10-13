@@ -68,7 +68,8 @@ enum Estado{
 	ABIERTO,
 	CERRANDO,
 	PARADO_ABRIENDO,
-	PARADO_CERRANDO
+	PARADO_CERRANDO,
+	PARADO_FOTOCELULA
 };
 
 bool detectarFlanco(){ //Codigo antirrebotes dado
@@ -108,6 +109,7 @@ void controlPanel(enum Estado estado, int posicion){
 			break;
 		case PARADO_ABRIENDO:
 		case PARADO_CERRANDO:
+		case PARADO_FOTOCELULA:
 			tm1638_DisplayTxt(&TM, "PArAdA");
 			break;
 	}
@@ -213,13 +215,13 @@ int main(void)
 	  		  }
 	  		  break;
 	  	  case CERRANDO:
-	  		  if(pulsacionBoton){
-	  			  estado=PARADO_CERRANDO;
-	  		  }
 	  		  if(fotocelula){
+	  			  estado=PARADO_FOTOCELULA;
+	  		  }
+	  		  else if(pulsacionBoton){
 	  			  estado=PARADO_CERRANDO;
 	  		  }
-	  		  if(tick){
+	  		  else if(tick){
 	  			  posicion-=PASO_CM;
 	  			  if(posicion<=0){
 	  				  posicion=0;
@@ -233,11 +235,13 @@ int main(void)
 	  		  }
 	  		  break;
 	  	  case PARADO_CERRANDO:
-	  		  if(!fotocelula){
-	  			  estado=CERRANDO;
-	  		  }
 	  		  if(pulsacionBoton){
 	  			  estado=ABRIENDO;
+	  		  }
+	  		  break;
+	  	  case PARADO_FOTOCELULA:
+	  		  if(!fotocelula){
+	  			  estado=CERRANDO;
 	  		  }
 	  		  break;
 	  }
